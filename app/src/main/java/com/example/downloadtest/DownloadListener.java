@@ -1,8 +1,6 @@
 package com.example.downloadtest;
 
 public interface DownloadListener {
-    public void onPrepare();
-
     public void onProgress(int progress);
 
     public void onSuccess();

@@ -116,13 +116,6 @@ public class DownloadTask extends AsyncTask<String, Integer, Integer> {
         return 0;
     }
     //
-
-    @Override
-    protected void onPreExecute() {
-        super.onPreExecute();
-        listener.onPrepare();
-    }
-
     @Override
     protected void onPostExecute(Integer integer) {
         super.onPostExecute(integer);

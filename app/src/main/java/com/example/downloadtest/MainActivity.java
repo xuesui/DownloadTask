@@ -31,7 +31,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
-    String downloadUrl = "https://timgsa.baidu.com/timg?image&quality=80&size=b9999_10000&sec=1528023919417&di=6653f6f735682b3e49666d044265d63f&imgtype=0&src=http%3A%2F%2Fnewsimg.5054399.com%2Fuploads%2Fuserup%2F1805%2F1Q54F441W.jpg";
+    String downloadUrl = "http://acj3.pc6.com/com.netease.cloudmusic_138.apk";
     private DownloadService.DownloadBinder downloadBinder;
     private ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
