@@ -1,8 +1,13 @@
 package com.example.downloadtest;
 
 import android.Manifest;
+import android.content.ComponentName;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.os.Environment;
+import android.os.IBinder;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -25,193 +30,77 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class MainActivity extends AppCompatActivity {
-    private ProgressBar progressBar;
-    private int lastProgress;
-    private int progress;
-    private boolean isPaused=false;
-    private boolean isCanceled=false;
-    ExecutorService cache= Executors.newCachedThreadPool();
-
-    private DownloadListener listener=new DownloadListener() {
+public class MainActivity extends AppCompatActivity implements View.OnClickListener {
+    String downloadUrl = "https://timgsa.baidu.com/timg?image&quality=80&size=b9999_10000&sec=1528023919417&di=6653f6f735682b3e49666d044265d63f&imgtype=0&src=http%3A%2F%2Fnewsimg.5054399.com%2Fuploads%2Fuserup%2F1805%2F1Q54F441W.jpg";
+    private DownloadService.DownloadBinder downloadBinder;
+    private ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
-        public void onSuccess() {
-            Toast.makeText(MainActivity.this, "下载成功", Toast.LENGTH_SHORT).show();
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            downloadBinder = (DownloadService.DownloadBinder) service;
         }
 
         @Override
-        public void onPaused() {
-            Toast.makeText(MainActivity.this, "下载暂停", Toast.LENGTH_SHORT).show();
-        }
-
-        @Override
-        public void onCanceled() {
-            Toast.makeText(MainActivity.this, "下载取消", Toast.LENGTH_SHORT).show();
-        }
-
-        @Override
-        public void onFailed() {
-            Toast.makeText(MainActivity.this, "下载失败", Toast.LENGTH_SHORT).show();
+        public void onServiceDisconnected(ComponentName name) {
         }
     };
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        progressBar=(ProgressBar)findViewById(R.id.progress_bar);
-        Button startDownload=(Button)findViewById(R.id.start_download);
-        Button pauseDownload=(Button)findViewById(R.id.pause_download);
-        Button cancelDownload=(Button)findViewById(R.id.cancel_download);
-        startDownload.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                startDownload();
-            }
-        });
-        pauseDownload.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                pauseDownload();
-                listener.onPaused();
-            }
-        });
-        cancelDownload.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                cancelDownload();
-                listener.onCanceled();
-            }
-        });
+        Button startDownload = (Button) findViewById(R.id.start_download);
+        Button pauseDownload = (Button) findViewById(R.id.pause_download);
+        Button cancelDownload = (Button) findViewById(R.id.cancel_download);
+        startDownload.setOnClickListener(this);
+        pauseDownload.setOnClickListener(this);
+        cancelDownload.setOnClickListener(this);
+        //启动服务
+        Intent intent = new Intent(this, DownloadService.class);
+        startService(intent);
+        //关联服务与活动
+        bindService(intent, serviceConnection, BIND_AUTO_CREATE);
+        //权限申请
+        if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+        }
+        //
+    }
 
-        if (ContextCompat.checkSelfPermission(MainActivity.this,Manifest.permission.WRITE_EXTERNAL_STORAGE)!= PackageManager.PERMISSION_GRANTED){
-            ActivityCompat.requestPermissions(MainActivity.this,new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},1);
+    @Override
+    public void onClick(View v) {
+        switch (v.getId()) {
+            case R.id.start_download:
+                downloadBinder.startDownload(downloadUrl);
+                break;
+            case R.id.pause_download:
+                downloadBinder.pauseDownload();
+                break;
+            case R.id.cancel_download:
+                downloadBinder.cancelDownload();
+                break;
         }
     }
 
-    public void downloadTask() {
-        File file = null;
-        InputStream is = null;
-        RandomAccessFile savedFile = null;
-        try {
-            long downloadedLength = 0;
-            URL url = new URL("http://cdn7.mydown.com/cloudmusicsetup_2.5.2.197409.exe");
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            String downloadUrl = connection.getURL().getFile();
-            String fileName = downloadUrl.substring(downloadUrl.lastIndexOf("/"));
-            String directory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getPath();
-            file = new File(directory + fileName);
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unbindService(serviceConnection);
+    }//活动销毁时断开服务与活动的链接，避免内存泄漏
 
-            if (file.exists()) {
-                downloadedLength = file.length();
-            }
-
-            long contentLength = getContentLength(downloadUrl);
-
-            if (contentLength==0){
-                listener.onFailed();
-            }else if (contentLength==downloadedLength){
-                listener.onSuccess();
-                cache.shutdown();
-            }
-
-            OkHttpClient client =new OkHttpClient();
-            Request request=new Request.Builder().addHeader("Range","bytes="+downloadedLength+"-").url(downloadUrl).build();
-            Response response=client.newCall(request).execute();
-            if (response!=null){
-                is=response.body().byteStream();
-                savedFile=new RandomAccessFile(file,"rw");
-                savedFile.seek(downloadedLength);
-                byte[] b=new byte[1024];
-                int total=0;
-                int length;
-                while ((length=is.read(b))!=-1){
-                    if (isPaused){
-                        break;
-                    }else if (isCanceled){
-                        break;
-                    }else {
-                        total+=length;
-                        savedFile.write(b,0,length);
-                        progress=(int)((total+downloadedLength)*100/contentLength);
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                onProgressUpdate();
-                            }
-                        });
-                    }
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch (requestCode) {
+            case 1:
+                if (grantResults.length > 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(this, "拒绝将无法下载", Toast.LENGTH_SHORT).show();
+                    finish();
                 }
-                downloadedLength=file.length();
-                if (downloadedLength==contentLength) {
-                    listener.onSuccess();
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }finally {
-            try{
-                if (is!=null){
-                    is.close();
-                }
-                if (savedFile!=null){
-                    savedFile.close();
-                }
-                if (isCanceled&&file!=null){
-                    file.delete();
-                }
-            }catch (Exception e){
-                e.printStackTrace();
-            }
+                break;
+            default:
         }
     }
-
-    private long getContentLength(String downloadUrl) throws Exception{
-        OkHttpClient client=new OkHttpClient();
-        Request request=new Request.Builder().url(downloadUrl).build();
-        Response response=client.newCall(request).execute();
-        if (response!=null&&response.isSuccessful()){
-            long contentLength=response.body().contentLength();
-            response.body().close();
-            return contentLength;
-        }
-
-        return 0;
-    }
-
-    public void onProgressUpdate(){
-        if (progress>lastProgress){
-            progressBar.post(new Runnable() {
-                @Override
-                public void run() {
-                    progressBar.setProgress(progress);
-                }
-            });
-
-        }
-    }
-
-    public void pauseDownload(){
-        isPaused=true;
-    }
-
-    public void cancelDownload(){
-        isCanceled=true;
-    }
-
-    public void startDownload(){
-        Runnable runnable =new Runnable() {
-            @Override
-            public void run() {
-                downloadTask();
-                if (isCanceled){
-                    cache.shutdown();
-                }
-            }
-        };
-        cache.execute(runnable);
-    }
-
 }
 
 
